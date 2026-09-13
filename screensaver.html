@@ -1,0 +1,1654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Holmes Contracting Screensaver</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+    canvas { display: block; width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <script type="module">
+// @ts-nocheck
+/** Omarchy-style Terminal Text Effects player. One source for preview + Windows HTML. */
+
+export const EFFECT_IDS = [
+  "beams",
+  "binarypath",
+  "blackhole",
+  "bouncyballs",
+  "bubbles",
+  "burn",
+  "colorshift",
+  "crumble",
+  "decrypt",
+  "errorcorrect",
+  "expand",
+  "fireworks",
+  "highlight",
+  "laseretch",
+  "matrix",
+  "middleout",
+  "orbittingvolley",
+  "overflow",
+  "pour",
+  "print",
+  "rain",
+  "randomsequence",
+  "rings",
+  "scattered",
+  "slice",
+  "slide",
+  "smoke",
+  "spotlights",
+  "spray",
+  "swarm",
+  "sweep",
+  "synthgrid",
+  "thunderstorm",
+  "unstable",
+  "vhstape",
+  "waves",
+  "wipe",
+];
+
+const CIPHER = "01░▒▓█/\\|#*+=<>abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function rng() {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function clamp(v, a, b) {
+  return Math.max(a, Math.min(b, v));
+}
+
+function easeOutCubic(t) {
+  const u = 1 - t;
+  return 1 - u * u * u;
+}
+
+function easeInOut(t) {
+  return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+}
+
+function hexToRgb(hex) {
+  const h = hex.replace("#", "");
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+
+function rgbToCss(r, g, b, a = 1) {
+  return "rgba(" + (r | 0) + "," + (g | 0) + "," + (b | 0) + "," + a + ")";
+}
+
+function mixRgb(a, b, t) {
+  return [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
+}
+
+function gradientAt(stops, t) {
+  if (stops.length === 1) return hexToRgb(stops[0]);
+  const x = clamp(t, 0, 0.9999) * (stops.length - 1);
+  const i = Math.floor(x);
+  return mixRgb(hexToRgb(stops[i]), hexToRgb(stops[i + 1] || stops[i]), x - i);
+}
+
+function dist(ax, ay, bx, by) {
+  const dx = ax - bx;
+  const dy = ay - by;
+  return Math.hypot(dx, dy);
+}
+
+const PALETTES = {
+  beams: ["#1ec8d1", "#f4f1e6", "#7ad7ff"],
+  binarypath: ["#19c463", "#b6ffce", "#0e7a3a"],
+  blackhole: ["#f2efe6", "#ff8a4c", "#ffd29a", "#9ad7ff"],
+  bouncyballs: ["#ff6b6b", "#ffd93d", "#6bcb77", "#4d96ff", "#f4f1e6"],
+  bubbles: ["#7dd3fc", "#bae6fd", "#f4f1e6"],
+  burn: ["#3b0a00", "#ff3b00", "#ffb703", "#fff3b0"],
+  colorshift: ["#ff6b6b", "#ffd93d", "#6bcb77", "#4d96ff", "#c084fc", "#ff6b6b"],
+  crumble: ["#d6c7a1", "#8a8175", "#f4f1e6"],
+  decrypt: ["#0b3d0b", "#1a7a1a", "#3dff6a", "#eda000"],
+  errorcorrect: ["#f87171", "#f4f1e6", "#86efac"],
+  expand: ["#f4f1e6", "#7dd3fc", "#fda4af"],
+  fireworks: ["#ff4d6d", "#ffd60a", "#80ffdb", "#c77dff", "#f4f1e6"],
+  highlight: ["#9aa3ad", "#f4f1e6", "#ffffff"],
+  laseretch: ["#ff2d2d", "#ffd60a", "#f4f1e6"],
+  matrix: ["#052e16", "#16a34a", "#86efac", "#f4f1e6"],
+  middleout: ["#67e8f9", "#f4f1e6", "#f9a8d4"],
+  orbittingvolley: ["#f4f1e6", "#38bdf8", "#fb7185", "#fbbf24"],
+  overflow: ["#93c5fd", "#f4f1e6"],
+  pour: ["#38bdf8", "#7dd3fc", "#f4f1e6"],
+  print: ["#a3e635", "#f4f1e6"],
+  rain: ["#38bdf8", "#e0f2fe", "#f4f1e6"],
+  randomsequence: ["#f4f1e6", "#7dd3fc", "#fde68a"],
+  rings: ["#22d3ee", "#f4f1e6", "#f472b6"],
+  scattered: ["#f4f1e6", "#fda4af", "#93c5fd"],
+  slice: ["#f4f1e6", "#67e8f9"],
+  slide: ["#f4f1e6", "#c4b5fd"],
+  smoke: ["#6b7280", "#d4d4d8", "#f4f1e6"],
+  spotlights: ["#f4f1e6", "#fde68a"],
+  spray: ["#f4f1e6", "#fb7185", "#38bdf8"],
+  swarm: ["#86efac", "#f4f1e6", "#fde68a"],
+  sweep: ["#f4f1e6", "#7dd3fc"],
+  synthgrid: ["#f472b6", "#22d3ee", "#f4f1e6"],
+  thunderstorm: ["#93c5fd", "#f4f1e6", "#fde68a"],
+  unstable: ["#fb7185", "#f4f1e6", "#67e8f9"],
+  vhstape: ["#f4f1e6", "#fb7185", "#67e8f9"],
+  waves: ["#38bdf8", "#f4f1e6", "#a7f3d0"],
+  wipe: ["#f4f1e6", "#86efac"],
+};
+
+function parseArt(text) {
+  const raw = String(text || "").replace(/\t/g, "    ").replace(/\r/g, "");
+  const lines = raw.split("\n");
+  while (lines.length && !lines[0].trim()) lines.shift();
+  while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+  const glyphs = [];
+  let maxCols = 0;
+  for (let y = 0; y < lines.length; y += 1) {
+    const chars = [...(lines[y] || "")];
+    maxCols = Math.max(maxCols, chars.length);
+    for (let x = 0; x < chars.length; x += 1) {
+      const ch = chars[x];
+      if (ch && ch !== " ") {
+        glyphs.push({
+          ch,
+          hx: x,
+          hy: y,
+          x,
+          y,
+          vx: 0,
+          vy: 0,
+          r: 244,
+          g: 241,
+          b: 230,
+          a: 0,
+          delay: 0,
+          t: 0,
+          done: false,
+          alt: ch,
+        });
+      }
+    }
+  }
+  return { glyphs, cols: Math.max(1, maxCols), rows: Math.max(1, lines.length) };
+}
+
+function isBraille(ch) {
+  const c = ch.codePointAt(0);
+  return c >= 0x2800 && c <= 0x28ff;
+}
+
+function drawGlyph(ctx, g, ox, oy, cw, ch) {
+  const x = ox + g.x * cw;
+  const y = oy + g.y * ch;
+  const a = clamp(g.a, 0, 1);
+  if (a <= 0.01) return;
+  ctx.fillStyle = rgbToCss(g.r, g.g, g.b, a);
+  const c = g.ch;
+  if (c === "█") {
+    ctx.fillRect(x, y, cw + 0.5, ch + 0.5);
+    return;
+  }
+  if (c === "▀") {
+    ctx.fillRect(x, y, cw + 0.5, ch * 0.5 + 0.5);
+    return;
+  }
+  if (c === "▄") {
+    ctx.fillRect(x, y + ch * 0.5, cw + 0.5, ch * 0.5 + 0.5);
+    return;
+  }
+  if (c === "▌") {
+    ctx.fillRect(x, y, cw * 0.5, ch + 0.5);
+    return;
+  }
+  if (c === "▐") {
+    ctx.fillRect(x + cw * 0.5, y, cw * 0.5, ch + 0.5);
+    return;
+  }
+  if (c === "░") {
+    ctx.globalAlpha = a * 0.35;
+    ctx.fillRect(x, y, cw, ch);
+    ctx.globalAlpha = 1;
+    return;
+  }
+  if (c === "▒") {
+    ctx.globalAlpha = a * 0.6;
+    ctx.fillRect(x, y, cw, ch);
+    ctx.globalAlpha = 1;
+    return;
+  }
+  if (c === "▓") {
+    ctx.globalAlpha = a * 0.82;
+    ctx.fillRect(x, y, cw, ch);
+    ctx.globalAlpha = 1;
+    return;
+  }
+  if (isBraille(c)) {
+    const bits = c.codePointAt(0) - 0x2800;
+    const dots = [
+      [0, 0, 1],
+      [0, 1, 2],
+      [0, 2, 4],
+      [1, 0, 8],
+      [1, 1, 16],
+      [1, 2, 32],
+      [0, 3, 64],
+      [1, 3, 128],
+    ];
+    const r = Math.max(0.7, Math.min(cw, ch) * 0.16);
+    for (const d of dots) {
+      if (bits & d[2]) {
+        ctx.beginPath();
+        ctx.arc(x + (d[0] + 0.5) * (cw / 2), y + (d[1] + 0.5) * (ch / 4), r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    return;
+  }
+  ctx.font = "500 " + Math.floor(ch * 0.92) + "px ui-monospace, 'Cascadia Mono', 'IBM Plex Mono', Consolas, monospace";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(c, x + cw / 2, y + ch / 2 + 0.5);
+}
+
+function paint(g, rgb, a) {
+  g.r = rgb[0];
+  g.g = rgb[1];
+  g.b = rgb[2];
+  if (a !== undefined) g.a = a;
+}
+
+function homeAll(glyphs) {
+  for (const g of glyphs) {
+    g.x = g.hx;
+    g.y = g.hy;
+    g.vx = 0;
+    g.vy = 0;
+    g.ch = g.alt;
+    g.done = false;
+    g.t = 0;
+  }
+}
+
+function resetGlyphs(glyphs) {
+  for (const g of glyphs) {
+    g.a = 0;
+    g.done = false;
+    g.t = 0;
+    g.vx = 0;
+    g.vy = 0;
+    g.ch = g.alt;
+  }
+}
+
+function allSettled(glyphs, eps) {
+  const e = eps || 0.08;
+  for (const g of glyphs) {
+    if (Math.abs(g.x - g.hx) > e || Math.abs(g.y - g.hy) > e) return false;
+    if (g.a < 0.92) return false;
+  }
+  return true;
+}
+
+function seekHome(g, dt, speed) {
+  const dx = g.hx - g.x;
+  const dy = g.hy - g.y;
+  const d = Math.hypot(dx, dy);
+  if (d < 0.04) {
+    g.x = g.hx;
+    g.y = g.hy;
+    return true;
+  }
+  const step = speed * dt;
+  if (step >= d) {
+    g.x = g.hx;
+    g.y = g.hy;
+    return true;
+  }
+  g.x += (dx / d) * step;
+  g.y += (dy / d) * step;
+  return false;
+}
+
+function makeEffects(rng, cols, rows) {
+  const cx = cols / 2;
+  const cy = rows / 2;
+
+  const colorFor = (id, g, t) => {
+    const stops = PALETTES[id] || PALETTES.wipe;
+    const u = (g.hx / Math.max(1, cols - 1) + t * 0.25) % 1;
+    return gradientAt(stops, u);
+  };
+
+  const scatter = (glyphs, spread) => {
+    for (const g of glyphs) {
+      g.x = rng() * cols * spread - (spread - 1) * cx;
+      g.y = rng() * rows * spread - (spread - 1) * cy;
+      g.a = 1;
+    }
+  };
+
+  return {
+    beams(glyphs) {
+      const n = 7 + Math.floor(rng() * 5);
+      const beams = [];
+      for (let i = 0; i < n; i += 1) {
+        const horiz = rng() > 0.45;
+        beams.push({
+          horiz,
+          pos: horiz ? -2 - rng() * rows : -2 - rng() * cols,
+          speed: 8 + rng() * 14,
+          delay: rng() * 0.6,
+        });
+      }
+      for (const g of glyphs) {
+        g.a = 0;
+        g.x = g.hx;
+        g.y = g.hy;
+      }
+      let t = 0;
+      return () => {
+        t += 1 / 60;
+        for (const b of beams) {
+          if (t < b.delay) continue;
+          b.pos += b.speed / 60;
+        }
+        let lit = 0;
+        for (const g of glyphs) {
+          let heat = 0;
+          for (const b of beams) {
+            const p = b.horiz ? g.hy - b.pos : g.hx - b.pos;
+            const near = Math.exp(-p * p * 1.8);
+            heat = Math.max(heat, near);
+          }
+          if (heat > 0.35) g.a = Math.max(g.a, Math.min(1, heat + g.a * 0.2));
+          if (g.a > 0.2) {
+            paint(g, mixRgb(hexToRgb("#1ec8d1"), hexToRgb("#f4f1e6"), clamp((g.a - 0.2) / 0.8, 0, 1)));
+          }
+          if (g.a > 0.85) lit += 1;
+        }
+        return lit / glyphs.length > 0.96;
+      };
+    },
+
+    binarypath(glyphs) {
+      for (const g of glyphs) {
+        const ang = rng() * Math.PI * 2;
+        const d = 8 + rng() * 18;
+        g.x = g.hx + Math.cos(ang) * d;
+        g.y = g.hy + Math.sin(ang) * d;
+        g.a = 1;
+        g.ch = rng() > 0.5 ? "1" : "0";
+        g.delay = rng() * 0.8;
+        g.t = 0;
+        paint(g, hexToRgb("#19c463"));
+      }
+      return () => {
+        let n = 0;
+        for (const g of glyphs) {
+          g.t += 1 / 60;
+          if (g.t < g.delay) continue;
+          const arrived = seekHome(g, 1 / 60, 18);
+          if (arrived) {
+            g.ch = g.alt;
+            paint(g, hexToRgb("#f4f1e6"));
+            n += 1;
+          } else {
+            g.ch = rng() > 0.7 ? (g.ch === "1" ? "0" : "1") : g.ch;
+          }
+        }
+        return n === glyphs.length;
+      };
+    },
+
+    blackhole(glyphs) {
+      let phase = 0;
+      let t = 0;
+      for (const g of glyphs) {
+        g.x = g.hx;
+        g.y = g.hy;
+        g.a = 1;
+        paint(g, colorFor("blackhole", g, 0));
+        g.delay = dist(g.hx, g.hy, cx, cy) * 0.04;
+      }
+      return () => {
+        t += 1 / 60;
+        if (phase === 0) {
+          let inCount = 0;
+          for (const g of glyphs) {
+            if (t < g.delay) continue;
+            g.x = lerp(g.x, cx, 0.08);
+            g.y = lerp(g.y, cy, 0.08);
+            g.a = lerp(g.a, 0.15, 0.05);
+            if (dist(g.x, g.y, cx, cy) < 0.45) inCount += 1;
+          }
+          if (t > 1.4 && inCount > glyphs.length * 0.7) {
+            phase = 1;
+            t = 0;
+            for (const g of glyphs) {
+              const ang = rng() * Math.PI * 2;
+              const sp = 18 + rng() * 26;
+              g.vx = Math.cos(ang) * sp;
+              g.vy = Math.sin(ang) * sp;
+              g.a = 1;
+            }
+          }
+          return false;
+        }
+        let n = 0;
+        for (const g of glyphs) {
+          g.vx += (g.hx - g.x) * 6 * (1 / 60);
+          g.vy += (g.hy - g.y) * 6 * (1 / 60);
+          g.vx *= 0.9;
+          g.vy *= 0.9;
+          g.x += g.vx / 60;
+          g.y += g.vy / 60;
+          paint(g, colorFor("blackhole", g, t));
+          if (seekHome(g, 1 / 60, 2) && Math.hypot(g.vx, g.vy) < 0.4) {
+            g.x = g.hx;
+            g.y = g.hy;
+            n += 1;
+          }
+        }
+        return t > 1.6 && n > glyphs.length * 0.9;
+      };
+    },
+
+    bouncyballs(glyphs) {
+      for (const g of glyphs) {
+        g.x = g.hx + (rng() - 0.5) * 2;
+        g.y = -2 - rng() * rows * 0.8;
+        g.vy = 4 + rng() * 10;
+        g.vx = (rng() - 0.5) * 4;
+        g.a = 1;
+        g.delay = rng() * 0.5;
+        g.t = 0;
+        paint(g, colorFor("bouncyballs", g, rng()));
+      }
+      return () => {
+        let n = 0;
+        for (const g of glyphs) {
+          g.t += 1 / 60;
+          if (g.t < g.delay) continue;
+          g.vy += 38 / 60;
+          g.x += g.vx / 60;
+          g.y += g.vy / 60;
+          if (g.y > g.hy) {
+            g.y = g.hy;
+            g.vy *= -0.45;
+            g.vx *= 0.6;
+            if (Math.abs(g.vy) < 3) {
+              g.x = lerp(g.x, g.hx, 0.2);
+              g.vy = 0;
+              if (Math.abs(g.x - g.hx) < 0.08) {
+                g.x = g.hx;
+                g.y = g.hy;
+                paint(g, hexToRgb("#f4f1e6"));
+                n += 1;
+              }
+            }
+          }
+        }
+        return n === glyphs.length;
+      };
+    },
+
+    bubbles(glyphs) {
+      const groups = 5 + Math.floor(rng() * 4);
+      for (const g of glyphs) {
+        const gi = Math.floor(rng() * groups);
+        const ang = rng() * Math.PI * 2;
+        const rad = 1.2 + rng() * 2.2;
+        g.x = (cols / groups) * gi + 2 + Math.cos(ang) * rad;
+        g.y = -4 - gi * 2 + Math.sin(ang) * rad;
+        g.vy = 3 + rng() * 4;
+        g.a = 0.85;
+        g.delay = gi * 0.18;
+        g.t = 0;
+        paint(g, colorFor("bubbles", g, 0));
+      }
+      return () => {
+        let n = 0;
+        for (const g of glyphs) {
+          g.t += 1 / 60;
+          if (g.t < g.delay) continue;
+          if (!g.done) {
+            g.y += g.vy / 60;
+            g.x += Math.sin(g.t * 3 + g.hx) * 0.04;
+            if (g.y >= g.hy - 0.3) g.done = true;
+          } else {
+            if (seekHome(g, 1 / 60, 14)) {
+              paint(g, hexToRgb("#f4f1e6"));
+              g.a = 1;
+              n += 1;
+            }
+          }
+        }
+        return n === glyphs.length;
+      };
+    },
+
+    burn(glyphs) {
+      for (const g of glyphs) {
+        g.x = g.hx;
+        g.y = g.hy;
+        g.a = 0;
+      }
+      let front = rows + 2;
+      return () => {
+        front -= 9 / 60;
+        let n = 0;
+        for (const g of glyphs) {
+          const d = g.hy - front;
+          if (d > 0) {
+            const heat = clamp(1 - Math.abs(d) * 0.35, 0, 1);
+            g.a = Math.max(g.a, clamp(d * 0.5, 0, 1));
+            paint(g, gradientAt(PALETTES.burn, clamp(heat, 0, 1)));
+            if (d > 1.2) {
+              paint(g, hexToRgb("#f4f1e6"));
+              g.a = 1;
+              n += 1;
+            }
+          }
+        }
+        return front < -2 && n === glyphs.length;
+      };
+    },
+
+    colorshift(glyphs) {
+      homeAll(glyphs);
+      for (const g of glyphs) g.a = 1;
+      let t = 0;
+      return () => {
+        t += 1 / 60;
+        for (const g of glyphs) paint(g, colorFor("colorshift", g, t * 0.35));
+        return t > 3.4;
+      };
+    },
+
+    crumble(glyphs) {
+      homeAll(glyphs);
+      for (const g of glyphs) {
+        g.a = 1;
+        paint(g, hexToRgb("#f4f1e6"));
+        g.delay = rng() * 0.8;
+        g.t = 0;
+        g.done = false;
+      }
+      let phase = 0;
+      let t = 0;
+      return () => {
+        t += 1 / 60;
+        if (phase === 0) {
+          let fallen = 0;
+          for (const g of glyphs) {
+            g.t += 1 / 60;
+            if (g.t < g.delay) continue;
+            g.vy += 28 / 60;
+            g.y += g.vy / 60;
+            g.x += (rng() - 0.5) * 0.08;
+            paint(g, hexToRgb("#8a8175"));
+            g.a = clamp(1 - (g.y - g.hy) / (rows + 4), 0, 1);
+            if (g.y > rows + 2) fallen += 1;
+          }
+          if (t > 1.8 && fallen > glyphs.length * 0.8) {
+            phase = 1;
+            for (const g of glyphs) {
+              g.x = cx;
+              g.y = rows + 3;
+              g.a = 1;
+              g.vy = 0;
+            }
+          }
+          return false;
+        }
+        let n = 0;
+        for (const g of glyphs) {
+          if (seekHome(g, 1 / 60, 22)) {
+            paint(g, hexToRgb("#f4f1e6"));
+            n += 1;
+          } else paint(g, hexToRgb("#d6c7a1"));
+        }
+        return n === glyphs.length;
+      };
+    },
+
+    decrypt(glyphs) {
+      for (const g of glyphs) {
+        g.x = g.hx;
+        g.y = g.hy;
+        g.a = 1;
+        g.delay = (g.hx + g.hy * 0.35) * 0.03 + rng() * 0.2;
+        g.t = 0;
+        g.done = false;
+        g.ch = CIPHER[(rng() * CIPHER.length) | 0];
+        paint(g, hexToRgb("#1a7a1a"));
+      }
+      return () => {
+        let n = 0;
+        for (const g of glyphs) {
+          g.t += 1 / 60;
+          if (!g.done) {
+            if (rng() > 0.55) g.ch = CIPHER[(rng() * CIPHER.length) | 0];
+            const heat = clamp(g.t / Math.max(0.2, g.delay + 0.8), 0, 1);
+            paint(g, gradientAt(PALETTES.decrypt, heat));
+            if (g.t > g.delay + 0.85) {
+              g.done = true;
+              g.ch = g.alt;
+              paint(g, hexToRgb("#eda000"));
+            }
+          } else {
+            paint(g, mixRgb(hexToRgb("#eda000"), hexToRgb("#f4f1e6"), clamp((g.t - g.delay - 0.85) * 2, 0, 1)));
+            n += 1;
+          }
+        }
+        return n === glyphs.length;
+      };
+    },
+
+    errorcorrect(glyphs) {
+      for (const g of glyphs) {
+        g.x = g.hx + (rng() - 0.5) * 10;
+        g.y = g.hy + (rng() - 0.5) * 6;
+        g.ch = CIPHER[(rng() * CIPHER.length) | 0];
+        g.a = 1;
+        g.done = false;
+        paint(g, hexToRgb("#f87171"));
+      }
+      const order = glyphs.map((_, i) => i).sort(() => rng() - 0.5);
+      let cursor = 0;
+      let acc = 0;
+      return () => {
+        acc += 1 / 60;
+        const rate = 0.028;
+        while (acc > rate && cursor < order.length) {
+          acc -= rate;
+          const g = glyphs[order[cursor]];
+          g.x = g.hx;
+          g.y = g.hy;
+          g.ch = g.alt;
+          paint(g, hexToRgb("#86efac"));
+          g.done = true;
+          cursor += 1;
+        }
+        for (const g of glyphs) {
+          if (!g.done) {
+            g.x += (rng() - 0.5) * 0.15;
+            g.y += (rng() - 0.5) * 0.1;
+          } else {
+            paint(g, mixRgb(hexToRgb("#86efac"), hexToRgb("#f4f1e6"), 0.7));
+          }
+        }
+        return cursor >= order.length;
+      };
+    },
+
+    expand(glyphs) {
+      for (const g of glyphs) {
+        g.x = cx;
+        g.y = cy;
+        g.a = 0;
+      }
+      let t = 0;
+      return () => {
+        t += 1 / 60;
+        const p = easeOutCubic(clamp(t / 1.3, 0, 1));
+        for (const g of glyphs) {
+          g.x = lerp(cx, g.hx, p);
+          g.y = lerp(cy, g.hy, p);
+          g.a = clamp(t * 2, 0, 1);
+          paint(g, colorFor("expand", g, t));
+        }
+        return t > 1.5;
+      };
+    },
+
+    fireworks(glyphs) {
+      const bursts = 4 + Math.floor(rng() * 3);
+      for (const g of glyphs) {
+        const b = Math.floor(rng() * bursts);
+        g.x = cols * ((b + 0.5) / bursts);
+        g.y = rows + 2;
+        g.vy = -(16 + rng() * 10);
+        g.vx = (rng() - 0.5) * 4;
+        g.a = 1;
+        g.delay = b * 0.22;
+        g.t = 0;
+        g.done = false;
+        paint(g, colorFor("fireworks", g, rng()));
+      }
+      return () => {
+        let n = 0;
+        for (const g of glyphs) {
+          g.t += 1 / 60;
+          if (g.t < g.delay) continue;
+          if (!g.done) {
+            g.vy += 18 / 60;
+            g.x += g.vx / 60;
+            g.y += g.vy / 60;
+            if (g.vy > -1) g.done = true;
+          } else if (seekHome(g, 1 / 60, 16)) {
+            paint(g, hexToRgb("#f4f1e6"));
+            n += 1;
+          }
+        }
+        return n === glyphs.length;
+      };
+    },
+
+    highlight(glyphs) {
+      homeAll(glyphs);
+      for (const g of glyphs) {
+        g.a = 1;
+        paint(g, hexToRgb("#9aa3ad"));
+      }
+      let t = 0;
+      return () => {
+        t += 1 / 60;
+        const bar = (t * 18) % (cols + 8) - 4;
+        for (const g of glyphs) {
+          const d = Math.abs(g.hx - bar);
+          const heat = Math.exp(-d * d * 0.18);
+          paint(g, mixRgb(hexToRgb("#8a9199"), hexToRgb("#ffffff"), heat));
+          g.a = 1;
+        }
+        return t > 3.2;
+      };
+    },
+
+    laseretch(glyphs) {
+      const order = glyphs.slice().sort((a, b) => a.hy - b.hy || a.hx - b.hx);
+      let i = 0;
+      let acc = 0;
+      for (const g of glyphs) {
+        g.a = 0;
+        g.x = g.hx;
+        g.y = g.hy;
+      }
+      const laser = { x: 0, y: 0 };
+      return (extra) => {
+        acc += 1 / 60;
+        const rate = 0.012;
+        while (acc > rate && i < order.length) {
+          acc -= rate;
+          const g = order[i];
+          g.a = 1;
+          paint(g, hexToRgb("#ffd60a"));
+          laser.x = g.hx;
+          laser.y = g.hy;
+          extra.laser = { x: g.hx, y: g.hy };
+          i += 1;
+        }
+        for (const g of glyphs) {
+          if (g.a > 0) paint(g, mixRgb(hexToRgb("#ffd60a"), hexToRgb("#f4f1e6"), 0.55));
+        }
+        extra.laser = i < order.length ? laser : null;
+        return i >= order.length;
+      };
+    },
+
+    matrix(glyphs) {
+      for (const g of glyphs) {
+        g.x = g.hx;
+        g.y = g.hy - rows - rng() * rows;
+        g.a = 1;
+        g.vy = 14 + rng() * 18;
+        g.ch = CIPHER[(rng() * 16) | 0];
+        paint(g, hexToRgb("#16a34a"));
+      }
+      return () => {
+        let n = 0;
+        for (const g of glyphs) {
+          if (g.y < g.hy) {
+            g.y += g.vy / 60;
+            if (rng() > 0.7) g.ch = CIPHER[(rng() * 20) | 0];
+            paint(g, hexToRgb("#16a34a"));
+            if (g.y >= g.hy) {
+              g.y = g.hy;
+              g.ch = g.alt;
+            }
+          } else {
+            g.y = g.hy;
+            g.ch = g.alt;
+            paint(g, hexToRgb("#f4f1e6"));
+            n += 1;
+          }
+        }
+        return n === glyphs.length;
+      };
+    },
+
+    middleout(glyphs) {
+      const mid = (rows - 1) / 2;
+      for (const g of glyphs) {
+        g.x = cx;
+        g.y = mid;
+        g.a = 0;
+      }
+      let t = 0;
+      return () => {
+        t += 1 / 60;
+        const p = easeOutCubic(clamp(t / 1.4, 0, 1));
+        for (const g of glyphs) {
+          g.x = lerp(cx, g.hx, p);
+          g.y = lerp(mid, g.hy, p);
+          g.a = clamp(t * 1.8, 0, 1);
+          paint(g, colorFor("middleout", g, t));
+        }
+        return t > 1.6;
+      };
+    },
+
+    orbittingvolley(glyphs) {
+      const launchers = [
+        { x: -2, y: -2 },
+        { x: cols + 2, y: -2 },
+        { x: -2, y: rows + 2 },
+        { x: cols + 2, y: rows + 2 },
+      ];
+      for (const g of glyphs) {
+        const L = launchers[(rng() * 4) | 0];
+        g.x = L.x;
+        g.y = L.y;
+        g.a = 0;
+        g.delay = rng() * 0.9;
+        g.t = 0;
+      }
+      let ang = 0;
+      return () => {
+        ang += 1.6 / 60;
+        let n = 0;
+        for (const g of glyphs) {
+          g.t += 1 / 60;
+          if (g.t < g.delay) continue;
+          g.a = Math.min(1, g.a + 0.08);
+          if (seekHome(g, 1 / 60, 16)) {
+            paint(g, hexToRgb("#f4f1e6"));
+            n += 1;
+          } else paint(g, colorFor("orbittingvolley", g, ang));
+        }
+        return n === glyphs.length;
+      };
+    },
+
+    overflow(glyphs) {
+      for (const g of glyphs) {
+        g.x = g.hx;
+        g.y = g.hy - rows - ((rng() * rows) | 0);
+        g.a = 1;
+        g.ch = glyphs[(rng() * glyphs.length) | 0].alt;
+        paint(g, hexToRgb("#93c5fd"));
+      }
+      let t = 0;
+      return () => {
+        t += 1 / 60;
+        let n = 0;
+        for (const g of glyphs) {
+          g.y += 10 / 60;
+          if (g.y >= g.hy) {
+            g.y = g.hy;
+            if (t > 1.4) {
+              g.ch = g.alt;
+              paint(g, hexToRgb("#f4f1e6"));
+              n += 1;
+            } else g.ch = glyphs[(rng() * glyphs.length) | 0].alt;
+          }
+        }
+        return n === glyphs.length;
+      };
+    },
+
+    pour(glyphs) {
+      const fromTop = rng() > 0.5;
+      for (const g of glyphs) {
+        g.x = g.hx;
+        g.y = fromTop ? -2 - (rows - g.hy) * 0.3 : rows + 2 + g.hy * 0.3;
+        g.a = 1;
+        g.delay = g.hx * 0.02 + rng() * 0.2;
+        g.t = 0;
+        paint(g, hexToRgb("#38bdf8"));
+      }
+      return () => {
+        let n = 0;
+        for (const g of glyphs) {
+          g.t += 1 / 60;
+          if (g.t < g.delay) continue;
+          if (seekHome(g, 1 / 60, 18)) {
+            paint(g, hexToRgb("#f4f1e6"));
+            n += 1;
+          }
+        }
+        return n === glyphs.length;
+      };
+    },
+
+    print(glyphs) {
+      const order = glyphs.slice().sort((a, b) => a.hy - b.hy || a.hx - b.hx);
+      for (const g of glyphs) {
+        g.a = 0;
+        g.x = g.hx;
+        g.y = g.hy;
+      }
+      let i = 0;
+      let acc = 0;
+      return (extra) => {
+        acc += 1 / 60;
+        const rate = 0.016;
+        while (acc > rate && i < order.length) {
+          acc -= rate;
+          const g = order[i];
+          g.a = 1;
+          paint(g, hexToRgb("#a3e635"));
+          extra.head = { x: g.hx, y: g.hy };
+          i += 1;
+        }
+        for (const g of glyphs) if (g.a > 0) paint(g, mixRgb(hexToRgb("#a3e635"), hexToRgb("#f4f1e6"), 0.65));
+        if (i >= order.length) extra.head = null;
+        return i >= order.length;
+      };
+    },
+
+    rain(glyphs) {
+      for (const g of glyphs) {
+        g.x = g.hx;
+        g.y = -1 - rng() * rows * 1.2;
+        g.a = 1;
+        g.vy = 10 + rng() * 16;
+        g.delay = rng() * 0.7;
+        g.t = 0;
+        paint(g, hexToRgb("#38bdf8"));
+      }
+      return () => {
+        let n = 0;
+        for (const g of glyphs) {
+          g.t += 1 / 60;
+          if (g.t < g.delay) continue;
+          g.y += g.vy / 60;
+          if (g.y >= g.hy) {
+            g.y = g.hy;
+            g.x = g.hx;
+            paint(g, hexToRgb("#f4f1e6"));
+            n += 1;
+          }
+        }
+        return n === glyphs.length;
+      };
+    },
+
+    randomsequence(glyphs) {
+      const order = glyphs.map((_, i) => i).sort(() => rng() - 0.5);
+      for (const g of glyphs) {
+        g.a = 0;
+        g.x = g.hx;
+        g.y = g.hy;
+      }
+      let i = 0;
+      let acc = 0;
+      return () => {
+        acc += 1 / 60;
+        while (acc > 0.012 && i < order.length) {
+          acc -= 0.012;
+          const g = glyphs[order[i]];
+          g.a = 1;
+          paint(g, colorFor("randomsequence", g, i / order.length));
+          i += 1;
+        }
+        return i >= order.length;
+      };
+    },
+
+    rings(glyphs) {
+      for (const g of glyphs) {
+        const ang = rng() * Math.PI * 2;
+        const rad = 4 + rng() * Math.max(cols, rows) * 0.35;
+        g.x = cx + Math.cos(ang) * rad;
+        g.y = cy + Math.sin(ang) * rad;
+        g.a = 1;
+        g.t = ang;
+        paint(g, colorFor("rings", g, 0));
+      }
+      let t = 0;
+      return () => {
+        t += 1 / 60;
+        const p = easeInOut(clamp(t / 2, 0, 1));
+        let n = 0;
+        for (const g of glyphs) {
+          const ang = g.t + t * 2.2;
+          const rad = (1 - p) * (4 + (g.hx % 5));
+          const rx = cx + Math.cos(ang) * rad;
+          const ry = cy + Math.sin(ang) * rad;
+          g.x = lerp(rx, g.hx, p);
+          g.y = lerp(ry, g.hy, p);
+          if (p > 0.97) {
+            g.x = g.hx;
+            g.y = g.hy;
+            paint(g, hexToRgb("#f4f1e6"));
+            n += 1;
+          }
+        }
+        return n === glyphs.length;
+      };
+    },
+
+    scattered(glyphs) {
+      scatter(glyphs, 1.4);
+      for (const g of glyphs) {
+        g.delay = rng() * 0.5;
+        g.t = 0;
+      }
+      return () => {
+        let n = 0;
+        for (const g of glyphs) {
+          g.t += 1 / 60;
+          if (g.t < g.delay) continue;
+          if (seekHome(g, 1 / 60, 14)) {
+            paint(g, hexToRgb("#f4f1e6"));
+            n += 1;
+          } else paint(g, colorFor("scattered", g, g.t));
+        }
+        return n === glyphs.length;
+      };
+    },
+
+    slice(glyphs) {
+      for (const g of glyphs) {
+        const left = g.hx < cx;
+        g.x = left ? g.hx - cols : g.hx + cols;
+        g.y = g.hy;
+        g.a = 1;
+        paint(g, hexToRgb("#67e8f9"));
+      }
+      let t = 0;
+      return () => {
+        t += 1 / 60;
+        const p = easeOutCubic(clamp(t / 1.2, 0, 1));
+        for (const g of glyphs) {
+          const left = g.hx < cx;
+          g.x = lerp(left ? g.hx - cols : g.hx + cols, g.hx, p);
+          paint(g, mixRgb(hexToRgb("#67e8f9"), hexToRgb("#f4f1e6"), p));
+        }
+        return t > 1.35;
+      };
+    },
+
+    slide(glyphs) {
+      for (const g of glyphs) {
+        const dir = (g.hy + g.hx) % 4;
+        if (dir === 0) {
+          g.x = -4;
+          g.y = g.hy;
+        } else if (dir === 1) {
+          g.x = cols + 4;
+          g.y = g.hy;
+        } else if (dir === 2) {
+          g.x = g.hx;
+          g.y = -4;
+        } else {
+          g.x = g.hx;
+          g.y = rows + 4;
+        }
+        g.a = 1;
+        g.delay = rng() * 0.35;
+        g.t = 0;
+      }
+      return () => {
+        let n = 0;
+        for (const g of glyphs) {
+          g.t += 1 / 60;
+          if (g.t < g.delay) continue;
+          if (seekHome(g, 1 / 60, 20)) {
+            paint(g, hexToRgb("#f4f1e6"));
+            n += 1;
+          }
+        }
+        return n === glyphs.length;
+      };
+    },
+
+    smoke(glyphs) {
+      for (const g of glyphs) {
+        g.x = g.hx;
+        g.y = g.hy;
+        g.a = 0.15;
+        paint(g, hexToRgb("#3f3f46"));
+      }
+      let front = -4;
+      return () => {
+        front += 10 / 60;
+        let n = 0;
+        for (const g of glyphs) {
+          const d = front - (g.hx * 0.4 + g.hy);
+          if (d > 0) {
+            g.a = Math.min(1, 0.15 + d * 0.4);
+            paint(g, gradientAt(PALETTES.smoke, clamp(d / 6, 0, 1)));
+            if (d > 4) {
+              paint(g, hexToRgb("#f4f1e6"));
+              g.a = 1;
+              n += 1;
+            }
+          }
+        }
+        return front > cols + rows + 6 && n === glyphs.length;
+      };
+    },
+
+    spotlights(glyphs) {
+      homeAll(glyphs);
+      for (const g of glyphs) g.a = 0.06;
+      const spots = [
+        { x: rng() * cols, y: rng() * rows, vx: 8, vy: 5 },
+        { x: rng() * cols, y: rng() * rows, vx: -6, vy: 7 },
+        { x: rng() * cols, y: rng() * rows, vx: 5, vy: -6 },
+      ];
+      let t = 0;
+      return () => {
+        t += 1 / 60;
+        const converge = clamp((t - 1.6) / 1.2, 0, 1);
+        for (const s of spots) {
+          if (converge <= 0) {
+            s.x += s.vx / 60;
+            s.y += s.vy / 60;
+            if (s.x < 0 || s.x > cols) s.vx *= -1;
+            if (s.y < 0 || s.y > rows) s.vy *= -1;
+          } else {
+            s.x = lerp(s.x, cx, 0.08);
+            s.y = lerp(s.y, cy, 0.08);
+          }
+        }
+        const radius = lerp(3.2, Math.max(cols, rows), converge);
+        let n = 0;
+        for (const g of glyphs) {
+          let lit = 0;
+          for (const s of spots) {
+            const d = dist(g.hx, g.hy, s.x, s.y);
+            lit = Math.max(lit, Math.exp((-d * d) / (radius * radius * 0.45)));
+          }
+          g.a = clamp(0.06 + lit, 0, 1);
+          paint(g, mixRgb(hexToRgb("#fde68a"), hexToRgb("#f4f1e6"), clamp(lit, 0, 1)));
+          if (g.a > 0.85) n += 1;
+        }
+        return t > 3.4 && n > glyphs.length * 0.9;
+      };
+    },
+
+    spray(glyphs) {
+      const ox = rng() * cols;
+      const oy = rng() * rows;
+      for (const g of glyphs) {
+        g.x = ox;
+        g.y = oy;
+        g.a = 0;
+        g.delay = rng() * 0.9;
+        g.t = 0;
+      }
+      return () => {
+        let n = 0;
+        for (const g of glyphs) {
+          g.t += 1 / 60;
+          if (g.t < g.delay) continue;
+          g.a = Math.min(1, g.a + 0.12);
+          if (seekHome(g, 1 / 60, 20)) {
+            paint(g, hexToRgb("#f4f1e6"));
+            n += 1;
+          } else paint(g, colorFor("spray", g, g.t));
+        }
+        return n === glyphs.length;
+      };
+    },
+
+    swarm(glyphs) {
+      scatter(glyphs, 1.2);
+      for (const g of glyphs) {
+        g.vx = (rng() - 0.5) * 12;
+        g.vy = (rng() - 0.5) * 12;
+        g.delay = 0.6 + rng() * 0.8;
+        g.t = 0;
+        g.a = 1;
+      }
+      return () => {
+        let n = 0;
+        for (const g of glyphs) {
+          g.t += 1 / 60;
+          if (g.t < g.delay) {
+            g.vx += (rng() - 0.5) * 8;
+            g.vy += (rng() - 0.5) * 8;
+            g.x += g.vx / 60;
+            g.y += g.vy / 60;
+            paint(g, hexToRgb("#86efac"));
+          } else if (seekHome(g, 1 / 60, 16)) {
+            paint(g, hexToRgb("#f4f1e6"));
+            n += 1;
+          }
+        }
+        return n === glyphs.length;
+      };
+    },
+
+    sweep(glyphs) {
+      for (const g of glyphs) {
+        g.x = g.hx;
+        g.y = g.hy;
+        g.a = 0;
+      }
+      let t = 0;
+      return () => {
+        t += 1 / 60;
+        const x1 = t * 18;
+        const x2 = (t - 1.1) * 18;
+        let n = 0;
+        for (const g of glyphs) {
+          if (g.hx < x1) g.a = 1;
+          if (g.hx < x2) {
+            paint(g, hexToRgb("#f4f1e6"));
+            n += 1;
+          } else if (g.a > 0) paint(g, hexToRgb("#7dd3fc"));
+        }
+        return t > 1.1 + cols / 18 + 0.3 && n === glyphs.length;
+      };
+    },
+
+    synthgrid(glyphs) {
+      for (const g of glyphs) {
+        g.x = g.hx;
+        g.y = g.hy;
+        g.ch = CIPHER[(rng() * CIPHER.length) | 0];
+        g.a = 1;
+        g.delay = (g.hx + g.hy) * 0.03;
+        g.t = 0;
+        paint(g, hexToRgb("#f472b6"));
+      }
+      return () => {
+        let n = 0;
+        for (const g of glyphs) {
+          g.t += 1 / 60;
+          if (g.t < g.delay) {
+            if (rng() > 0.8) g.ch = CIPHER[(rng() * CIPHER.length) | 0];
+          } else {
+            g.ch = g.alt;
+            paint(g, mixRgb(hexToRgb("#22d3ee"), hexToRgb("#f4f1e6"), clamp((g.t - g.delay) * 2, 0, 1)));
+            n += 1;
+          }
+        }
+        return n === glyphs.length;
+      };
+    },
+
+    thunderstorm(glyphs) {
+      for (const g of glyphs) {
+        g.x = g.hx;
+        g.y = -rng() * rows;
+        g.a = 0.5;
+        paint(g, hexToRgb("#93c5fd"));
+      }
+      let t = 0;
+      let flash = 0;
+      return (extra) => {
+        t += 1 / 60;
+        if (rng() > 0.985) flash = 1;
+        flash *= 0.86;
+        extra.flash = flash;
+        let n = 0;
+        for (const g of glyphs) {
+          g.y += (8 + rng() * 6) / 60;
+          if (g.y >= g.hy) {
+            g.y = g.hy;
+            g.x = g.hx;
+            g.a = 1;
+            paint(g, mixRgb(hexToRgb("#fde68a"), hexToRgb("#f4f1e6"), 1 - flash));
+            n += 1;
+          } else g.a = 0.45 + flash * 0.5;
+        }
+        return t > 2.8 && n === glyphs.length;
+      };
+    },
+
+    unstable(glyphs) {
+      for (const g of glyphs) {
+        g.x = g.hx + (rng() - 0.5) * 3;
+        g.y = g.hy + (rng() - 0.5) * 2;
+        g.a = 1;
+        g.ch = CIPHER[(rng() * CIPHER.length) | 0];
+        paint(g, hexToRgb("#fb7185"));
+      }
+      let phase = 0;
+      let t = 0;
+      return () => {
+        t += 1 / 60;
+        if (phase === 0) {
+          if (t > 0.7) {
+            phase = 1;
+            for (const g of glyphs) {
+              const ang = rng() * Math.PI * 2;
+              const sp = 20 + rng() * 24;
+              g.vx = Math.cos(ang) * sp;
+              g.vy = Math.sin(ang) * sp;
+              g.ch = g.alt;
+            }
+            t = 0;
+          }
+          return false;
+        }
+        if (phase === 1) {
+          for (const g of glyphs) {
+            g.x += g.vx / 60;
+            g.y += g.vy / 60;
+          }
+          if (t > 0.45) phase = 2;
+          return false;
+        }
+        let n = 0;
+        for (const g of glyphs) {
+          if (seekHome(g, 1 / 60, 22)) {
+            paint(g, hexToRgb("#f4f1e6"));
+            n += 1;
+          }
+        }
+        return n === glyphs.length;
+      };
+    },
+
+    vhstape(glyphs) {
+      homeAll(glyphs);
+      for (const g of glyphs) g.a = 1;
+      let t = 0;
+      return () => {
+        t += 1 / 60;
+        for (const g of glyphs) {
+          const rowJitter = Math.sin(t * 18 + g.hy * 2.2) * (0.4 + Math.sin(t * 2) * 0.5);
+          g.x = g.hx + rowJitter;
+          g.y = g.hy + (rng() > 0.97 ? (rng() - 0.5) * 0.6 : 0);
+          const chroma = Math.sin(t * 7 + g.hy) * 0.5 + 0.5;
+          paint(g, mixRgb(hexToRgb("#67e8f9"), hexToRgb("#fb7185"), chroma));
+          if (rng() > 0.92) g.a = 0.35 + rng() * 0.65;
+          else g.a = 1;
+        }
+        if (t > 2.8) {
+          homeAll(glyphs);
+          for (const g of glyphs) {
+            paint(g, hexToRgb("#f4f1e6"));
+            g.a = 1;
+          }
+          return true;
+        }
+        return false;
+      };
+    },
+
+    waves(glyphs) {
+      for (const g of glyphs) {
+        g.x = g.hx;
+        g.y = g.hy;
+        g.a = 0;
+      }
+      let t = 0;
+      return () => {
+        t += 1 / 60;
+        let n = 0;
+        for (const g of glyphs) {
+          const wave = t * 14 - g.hx * 0.9 - g.hy * 0.35;
+          if (wave > 0) {
+            g.a = clamp(wave * 0.5, 0, 1);
+            g.y = g.hy + Math.sin(wave) * (1 - clamp(wave / 8, 0, 1)) * 0.8;
+            paint(g, colorFor("waves", g, t));
+            if (g.a > 0.95) {
+              g.y = g.hy;
+              paint(g, hexToRgb("#f4f1e6"));
+              n += 1;
+            }
+          }
+        }
+        return t > cols / 14 + 1.4 && n === glyphs.length;
+      };
+    },
+
+    wipe(glyphs) {
+      for (const g of glyphs) {
+        g.x = g.hx;
+        g.y = g.hy;
+        g.a = 0;
+      }
+      const dir = (rng() * 4) | 0;
+      let t = 0;
+      return () => {
+        t += 1 / 60;
+        const p = t * 16;
+        let n = 0;
+        for (const g of glyphs) {
+          const k = dir === 0 ? g.hx : dir === 1 ? cols - g.hx : dir === 2 ? g.hy : rows - g.hy;
+          if (k < p) {
+            g.a = 1;
+            paint(g, mixRgb(hexToRgb("#86efac"), hexToRgb("#f4f1e6"), clamp((p - k) / 6, 0, 1)));
+            n += 1;
+          }
+        }
+        return n === glyphs.length && t > 0.4;
+      };
+    },
+  };
+}
+
+export function createPlayer(canvas, initial) {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    return { setConfig() {}, setEffect() {}, destroy() {}, currentEffect() { return ""; } };
+  }
+
+  const state = {
+    ascii: initial?.ascii || "",
+    preview: !!initial?.preview,
+    fontScale: initial?.fontScale ?? 1,
+    holdMs: initial?.holdMs ?? 2600,
+    enabledEffects: initial?.enabledEffects?.length ? initial.enabledEffects.slice() : EFFECT_IDS.slice(),
+    dedication: initial?.dedication || "",
+    showDedication: !!initial?.showDedication,
+    showEffectName: initial?.showEffectName !== false,
+    pinnedEffect: initial?.pinnedEffect || null,
+  };
+
+  let parsed = parseArt(state.ascii);
+  let rng = mulberry32((Math.random() * 1e9) | 0);
+  let effectId = "decrypt";
+  let effectStep = null;
+  let extra = {};
+  let hold = 0;
+  let settled = false;
+  let fade = 1;
+  let last = performance.now();
+  let raf = 0;
+  let running = true;
+  let lastPick = "";
+  let cssW = 0;
+  let cssH = 0;
+
+  function pickEffect() {
+    if (state.pinnedEffect && EFFECT_IDS.includes(state.pinnedEffect)) return state.pinnedEffect;
+    const pool = state.enabledEffects.filter((id) => EFFECT_IDS.includes(id));
+    const list = pool.length ? pool : EFFECT_IDS;
+    if (list.length === 1) return list[0];
+    let id = list[(rng() * list.length) | 0];
+    let guard = 0;
+    while (id === lastPick && guard < 8) {
+      id = list[(rng() * list.length) | 0];
+      guard += 1;
+    }
+    return id;
+  }
+
+  function startEffect(id) {
+    parsed = parseArt(state.ascii);
+    rng = mulberry32((Math.random() * 1e9) | 0);
+    const factory = makeEffects(rng, parsed.cols, parsed.rows);
+    effectId = factory[id] ? id : "scattered";
+    lastPick = effectId;
+    resetGlyphs(parsed.glyphs);
+    extra = {};
+    effectStep = factory[effectId](parsed.glyphs);
+    settled = false;
+    hold = 0;
+    fade = 1;
+  }
+
+  function layout() {
+    const parent = canvas.parentElement;
+    const w = parent?.clientWidth || window.innerWidth;
+    const h = parent?.clientHeight || window.innerHeight;
+    cssW = w;
+    cssH = h;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = Math.max(1, Math.floor(w * dpr));
+    canvas.height = Math.max(1, Math.floor(h * dpr));
+    canvas.style.width = w + "px";
+    canvas.style.height = h + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function metrics() {
+    const pad = 0.16;
+    const maxW = cssW * (1 - pad);
+    const maxH = cssH * (1 - pad * 1.15);
+    const aspect = 0.55;
+    const fitW = maxW / (parsed.cols * aspect);
+    const fitH = maxH / parsed.rows;
+    const ch = clamp(Math.min(fitW, fitH) * state.fontScale, 5, 64);
+    const cw = ch * aspect;
+    const artW = parsed.cols * cw;
+    const artH = parsed.rows * ch;
+    const ox = (cssW - artW) / 2;
+    const oy = (cssH - artH) / 2 - (state.showDedication && state.dedication ? ch * 0.6 : 0);
+    return { cw, ch, ox, oy };
+  }
+
+  function frame(now) {
+    if (!running) return;
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    if (!effectStep) startEffect(pickEffect());
+    extra.laser = extra.laser || null;
+    extra.head = extra.head || null;
+    extra.flash = extra.flash || 0;
+    if (!settled && effectStep) {
+      const done = effectStep(extra);
+      if (done) settled = true;
+    } else {
+      hold += dt * 1000;
+      if (hold >= state.holdMs) startEffect(pickEffect());
+    }
+
+    const { cw, ch, ox, oy } = metrics();
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, cssW, cssH);
+    if (extra.flash > 0.05) {
+      ctx.fillStyle = rgbToCss(244, 241, 230, extra.flash * 0.18);
+      ctx.fillRect(0, 0, cssW, cssH);
+    }
+    ctx.save();
+    ctx.globalAlpha = fade;
+    for (const g of parsed.glyphs) drawGlyph(ctx, g, ox, oy, cw, ch);
+    if (extra.laser) {
+      ctx.strokeStyle = "rgba(255,214,10,0.85)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(ox + extra.laser.x * cw + cw / 2, 0);
+      ctx.lineTo(ox + extra.laser.x * cw + cw / 2, oy + extra.laser.y * ch);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(255,80,40,0.95)";
+      ctx.beginPath();
+      ctx.arc(ox + extra.laser.x * cw + cw / 2, oy + extra.laser.y * ch + ch / 2, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (extra.head) {
+      ctx.fillStyle = "rgba(163,230,53,0.9)";
+      ctx.fillRect(ox + extra.head.x * cw, oy + extra.head.y * ch + ch * 0.82, cw, 2);
+    }
+    if (state.showDedication && state.dedication && settled) {
+      const appear = clamp((hold + 200) / 600, 0, 1);
+      ctx.globalAlpha = appear * 0.78;
+      ctx.fillStyle = "#c4c0b4";
+      ctx.font = "400 " + Math.max(11, Math.floor(ch * 0.42)) + "px 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillText(state.dedication, cssW / 2, oy + parsed.rows * ch + ch * 0.55);
+    }
+    ctx.restore();
+    if (state.preview && state.showEffectName) {
+      ctx.fillStyle = "rgba(236,236,232,0.42)";
+      ctx.font = "500 11px ui-monospace, 'IBM Plex Mono', Consolas, monospace";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "bottom";
+      ctx.fillText(effectId, 16, cssH - 14);
+    }
+    raf = requestAnimationFrame(frame);
+  }
+
+  function onExit() {
+    if (state.preview) return;
+    window.parent?.postMessage({ type: "saver-exit" }, "*");
+    if (window === window.top) {
+      /* standalone: keep running until the host process dies */
+    }
+  }
+
+  const ro = new ResizeObserver(() => layout());
+  ro.observe(canvas.parentElement || canvas);
+  layout();
+  startEffect(pickEffect());
+  raf = requestAnimationFrame(frame);
+
+  if (!state.preview) {
+    window.addEventListener("keydown", onExit);
+    window.addEventListener("pointerdown", onExit);
+    let lx = 0;
+    let ly = 0;
+    let primed = false;
+    window.addEventListener("pointermove", (e) => {
+      if (!primed) {
+        lx = e.clientX;
+        ly = e.clientY;
+        primed = true;
+        return;
+      }
+      if (Math.hypot(e.clientX - lx, e.clientY - ly) > 8) onExit();
+    });
+  }
+
+  return {
+    setConfig(next) {
+      const asciiChanged = next.ascii !== undefined && next.ascii !== state.ascii;
+      Object.assign(state, next);
+      if (asciiChanged) startEffect(state.pinnedEffect || pickEffect());
+    },
+    setEffect(id) {
+      if (!EFFECT_IDS.includes(id)) return;
+      startEffect(id);
+    },
+    destroy() {
+      running = false;
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+    },
+    currentEffect() {
+      return effectId;
+    },
+  };
+}
+
+    const cfg = {"ascii": "                                    \u28f4\u28f6\u28f6\u28f6\u28f6\u28f6          \u28a0\u28f6\u28f6\u28f6\u28f6\u28f6\u2846\n                                    \u28ff\u28ff\u28ff\u28ff\u28ff\u28ff          \u28b8\u28ff\u28ff\u28ff\u28ff\u28ff\u2847\n                                    \u28ff\u28ff\u28ff\u28ff\u28ff\u28ff          \u28b8\u28ff\u28ff\u28ff\u28ff\u28ff\u2847\n                                    \u28ff\u28ff\u28ff\u28ff\u28ff\u28ff          \u28b8\u28ff\u28ff\u28ff\u28ff\u28ff\u2847\n                                \u2880\u28e0\u2846 \u28ff\u28ff\u28ff\u28ff\u28ff\u28ff          \u28b8\u28ff\u28ff\u28ff\u28ff\u28ff\u2847 \u28f6\u28c4\n                              \u28e0\u28f4\u28ff\u28ff\u2847 \u28ff\u28ff\u28ff\u28ff\u28ff\u28ff \u2880\u28c0\u28c0\u28c0 \u28c0\u28c0\u28c0\u2840 \u281b\u28bf\u28ff\u28ff\u28ff\u2847 \u28ff\u28ff\u28ff\u28e6\u28c0\n                           \u2880\u28f4\u28fe\u28ff\u28ff\u28ff\u28ff\u2847 \u28ff\u28ff\u28ff\u28ff\u28ff\u28ff \u28b8\u28ff\u28ff\u28ff \u28ff\u28ff\u28ff\u2847 \u28e6\u28c4\u2809\u283b\u28ff\u2847 \u28ff\u28ff\u28ff\u28ff\u28ff\u28f7\u28e4\u2840\n                        \u2880\u28e0\u28fe\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u2847 \u28ff\u28ff\u28ff\u28ff\u28ff\u28ff \u2818\u281b\u281b\u281b \u281b\u281b\u281b\u2803 \u28ff\u28ff\u28f7\u28e6\u2840\u2801 \u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28f6\u28c4\n                      \u28e0\u28f4\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u283f\u280b\u2801 \u28ff\u28ff\u28ff\u28ff\u28ff\u28ff \u28b8\u28ff\u28ff\u28ff \u28ff\u28ff\u28ff\u2847 \u28ff\u28ff\u28ff\u28ff\u28ff\u2847 \u2808\u283b\u28bf\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28e6\u28c0\n                   \u28c0\u28f4\u28fe\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u287f\u281b\u2801    \u28ff\u28ff\u28ff\u28ff\u28ff\u28ff \u2838\u283f\u283f\u283f \u283f\u283f\u283f\u2807\u2880\u28ff\u28ff\u28ff\u28ff\u28ff\u2847    \u2819\u283b\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28f7\u28e4\u2840\n                \u2880\u28e4\u28fe\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u281f\u2809       \u28ff\u28ff\u28ff\u28ff\u28ff\u28ff          \u28b8\u28ff\u28ff\u28ff\u28ff\u28ff\u2847      \u2808\u2819\u28bf\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28f6\u28c4\n              \u28e0\u28f6\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u283f\u280b          \u28fd\u28ff\u28ff\u28ff\u28ff\u28ff          \u2830\u28ff\u28ff\u28ff\u28ff\u28ff\u2847         \u2808\u283b\u28bf\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28e6\u28c0\n            \u2830\u283f\u283f\u283f\u283f\u283f\u283f\u283f\u283f\u283f\u281b\u2801            \u283b\u283f\u283f\u283f\u283f\u283f          \u2808\u283f\u283f\u283f\u283f\u283f\u2807            \u2819\u283b\u283f\u283f\u283f\u283f\u283f\u283f\u283f\u283f\u2837\u2806\n\n \u28c0\u28c0\u28c0\u2840     \u2880\u28c0\u28c0\u28c0\u2840     \u28c0\u28c0\u28e0\u28e4\u28e4\u28e4\u28c0\u28c0\u2840     \u28c0\u28c0\u28c0\u2840           \u2880\u28e0\u28e4\u2840       \u28e0\u28e4\u2840    \u28c0\u28c0\u28c0\u28c0\u28c0\u28c0\u28c0\u28c0\u28c0\u28c0\u28c0\u28c0\u2840   \u28c0\u28c0\u28c0\u28c0\u28c0\u28c0\u28c0\u28c0\u28c0\u28c0\u28c0\u28c0\n \u28ff\u28ff\u28ff\u2847     \u28b8\u28ff\u28ff\u28ff\u2847  \u28e0\u28f6\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28f7\u28c4   \u28ff\u28ff\u28ff\u2847           \u28fe\u28ff\u28ff\u28ff\u2844     \u28fc\u28ff\u28ff\u28ff\u2846   \u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u2847 \u28f4\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\n \u28ff\u28ff\u28ff\u2847     \u28b8\u28ff\u28ff\u28ff\u2847 \u28fc\u28ff\u28ff\u28ff\u281f\u280b\u2809\u2809\u2809\u2809\u2819\u283b\u28ff\u28ff\u28ff\u28e7  \u28ff\u28ff\u28ff\u2847          \u28b0\u28ff\u28ff\u28ff\u28ff\u28ff\u2844   \u28fc\u28ff\u28ff\u28ff\u28ff\u28f7   \u28fe\u28ff\u28ff\u28ff\u2809\u2809\u2809\u2809\u2809\u2809\u2809\u2809\u2801\u28b0\u28ff\u28ff\u28ff\u285f\u2809\u2809\u2809\u2809\u2809\u2809\u2809\u2809\u2809\u2809\n \u28ff\u28ff\u28ff\u2847\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u2847\u28a0\u28ff\u28ff\u28ff\u2847        \u2818\u28ff\u28ff\u28ff\u2847 \u28ff\u28ff\u28ff\u2847          \u28ff\u28ff\u28ff\u281f\u28ff\u28ff\u28ff\u2844 \u28fc\u28ff\u28ff\u285f\u28ff\u28ff\u28ff\u2846  \u28ff\u28ff\u28ff\u28ff\u28b0\u28f7\u28ff\u28ff\u28ff\u28ff\u28ff\u28f7  \u28bf\u28ff\u28ff\u28ff\u28f7\u28f6\u28f6\u28f6\u28f6\u28f6\u28f6\u28f6\u28e6\u2840\n \u28ff\u28ff\u28ff\u2847\u283f\u283f\u283f\u283f\u283f\u28bf\u28ff\u28ff\u28ff\u2847\u2808\u28ff\u28ff\u28ff\u28c7        \u28f0\u28ff\u28ff\u28ff\u2807 \u28ff\u28ff\u28ff\u2847         \u28f8\u28ff\u28ff\u287f \u2839\u28ff\u28ff\u28f7\u28f8\u28ff\u28ff\u285f \u28b8\u28ff\u28ff\u28ff  \u28ff\u28ff\u28ff\u28ff\u2818\u283f\u283f\u283f\u283f\u283f\u283f\u281f   \u2809\u281b\u281b\u283b\u283f\u283f\u283f\u283f\u283f\u28bf\u28ff\u28ff\u28ff\u2844\n \u28ff\u28ff\u28ff\u2847     \u2818\u28ff\u28ff\u28ff\u2847 \u2839\u28ff\u28ff\u28ff\u28f7\u28e6\u28e4\u28e4\u28e4\u28e4\u28f4\u28fe\u28ff\u28ff\u28ff\u281f  \u28ff\u28ff\u28ff\u28e7\u28e4\u28e4\u28e4\u28e4\u28e4\u28e4\u28e4\u2844\u2880\u28ff\u28ff\u28ff\u2807  \u28b9\u28ff\u28ff\u28ff\u28ff\u287f  \u2808\u28ff\u28ff\u28ff\u2847 \u28ff\u28ff\u28ff\u28ff\u28e4\u28e4\u28e4\u28e4\u28e4\u28e4\u28e4\u28e4\u2844 \u28e4\u28e4\u28e4\u28e4\u28e4\u28e4\u28e4\u28e4\u28e4\u28e4\u28f6\u28ff\u28ff\u28ff\u2807\n \u28ff\u28ff\u28ff\u2847     \u28b0\u28ff\u28ff\u28ff\u2847  \u2808\u283b\u283f\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u287f\u281f\u2801   \u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u2847\u28f8\u28ff\u28ff\u28ff    \u28bb\u28ff\u28ff\u287f\u2801   \u28b9\u28ff\u28ff\u28ff \u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u2847 \u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u28ff\u287f\u280b\n \u2809\u2809\u2809       \u2809\u2809\u2809        \u2809\u2809\u2809\u2809\u2801       \u2809\u2809\u2809\u2809\u2809\u2809\u2809\u2809\u2809\u2809\u2809\u2801\u2808\u2809\u2809\u2801     \u2808\u2809      \u2809\u2809\u2809 \u2808\u2809\u2809\u2809\u2809\u2809\u2809\u2809\u2809\u2809\u2809\u2809\u2801 \u2808\u2809\u2809\u2809\u2809\u2809\u2809\u2809\u2809\u2809\u2801\n\n \u28f4\u281f\u281b\u283b\u2806 \u2880\u28f4\u281f\u281b\u28bf\u28e6  \u28b8\u28f7\u28c4 \u28ff  \u2818\u281b\u28ff\u285b\u281b  \u28ff\u285f\u281b\u28bf\u2846   \u28fc\u28bf\u2844   \u28f4\u281f\u281b\u283f\u2806 \u2818\u281b\u28ff\u285f\u281b  \u28ff\u2847  \u28ff\u28f7\u2840\u28b8\u28ff  \u28e0\u287e\u281b\u283b\u2817      \u28b8\u28ff    \u28b8\u28ff    \u28a0\u28fe\u281f\u281b\u2837\n\u2810\u28ff\u2840 \u2880\u2840 \u2838\u28ff\u2840 \u28a8\u28ff  \u28b8\u284f\u283b\u28e7\u28ff    \u28ff\u2847   \u28ff\u2877\u28b6\u28df\u2801  \u28fc\u28ef\u28ec\u28ff\u2844 \u2818\u28ff\u2840 \u2880\u2840   \u28ff\u2847   \u28ff\u2847  \u28ff\u284f\u28bf\u28fe\u28ff  \u28bf\u28c7\u2818\u283f\u28ff      \u28b8\u28ff    \u28b8\u28ff    \u28b8\u28e7  \u28c0\n \u2808\u281b\u283f\u281b\u2803  \u2819\u283b\u283f\u281b\u2801  \u2818\u2803 \u2818\u281b    \u283b\u2803   \u281b\u2803\u2808\u281b\u2803 \u2818\u281b  \u2818\u283f  \u2808\u281b\u283f\u281b\u2801   \u283b\u2803   \u283b\u2803  \u283b\u2803 \u2819\u281f  \u2808\u281b\u283f\u281f\u281b      \u2818\u283f\u281b\u283b\u2803 \u2818\u283f\u283b\u283b\u2803  \u2819\u283b\u281f\u281b", "preview": false, "fontScale": 1, "holdMs": 2600, "enabledEffects": ["beams", "binarypath", "blackhole", "bouncyballs", "bubbles", "burn", "colorshift", "crumble", "decrypt", "errorcorrect", "expand", "fireworks", "highlight", "laseretch", "matrix", "middleout", "orbittingvolley", "overflow", "pour", "print", "rain", "randomsequence", "rings", "scattered", "slice", "slide", "smoke", "spotlights", "spray", "swarm", "sweep", "synthgrid", "thunderstorm", "unstable", "vhstape", "waves", "wipe"], "dedication": "", "showDedication": true, "showEffectName": false, "pinnedEffect": null};
+    const canvas = document.getElementById("c");
+    createPlayer(canvas, cfg);
+  </script>
+</body>
+</html>
